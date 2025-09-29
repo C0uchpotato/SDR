@@ -5,9 +5,9 @@ TLE_FILE=~/SDR/sats/meteor.tle
 
 # List of NORAD IDs you want
 NORAD_IDS=(
-  25338  # NOAA 15
-  28654  # NOAA 18
-  33591  # NOAA 19
+#  25338  # NOAA 15
+#  28654  # NOAA 18
+#  33591  # NOAA 19
   27844  # CO-55
   22825  # AO-27
   7530  # OSCAR 7
