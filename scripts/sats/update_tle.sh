@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-TLE_FILE="$HOME/SDR/sats/meteor.tle"
+TLE_FILE=~/SDR/sats/meteor.tle
 
 # List of NORAD IDs you want
 NORAD_IDS=(
