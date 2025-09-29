@@ -1,0 +1,13 @@
+*** test.py
+--- test.py
+***************
+*** 66,67 ****
+-            sat.name = f"{name} ({epoch})"
+--- 66,67 ----
++            sat.name = name
+***************
+*** 142,143 ****
+-                    print(f"{name:<30} {window_str:<24} {max_el:>8.1f} {countdown_str:<12}\n")
+--- 142,143 ----
++                    print(f"{name:<30} {window_str:<24} {max_el:>8.1f} {countdown_str:<12}")
+
