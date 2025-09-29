@@ -1,0 +1,126 @@
+#!/usr/bin/env python3
+# -*- coding: utf-8 -*-
+
+import time
+import os
+from datetime import datetime, timedelta, timezone
+from skyfield.api import load, EarthSatellite, wgs84
+
+# -----------------------------
+# USER CONFIGURATION
+# -----------------------------
+tle_source = "/home/waffa/SDR/sats/meteor.tle"  # local path to your TLE file
+min_elevation_deg = 50       # minimum elevation (degrees)
+observer_lat = 35.2271
+observer_lon = -80.8431
+observer_alt_m = 0
+lookahead_days = 7           # how far ahead to search
+max_passes_to_show = 15       # number of passes to display
+refresh_interval = 15        # seconds between updates
+# -----------------------------
+
+ts = load.timescale()
+observer = wgs84.latlon(observer_lat, observer_lon, observer_alt_m)
+
+# -----------------------------
+# Load TLEs
+# -----------------------------
+def load_tles(path):
+    sats = []
+    if not os.path.exists(path):
+        print(f"TLE file not found: {path}")
+        return sats
+
+    with open(path) as f:
+        lines = [l.strip() for l in f if l.strip()]
+
+    i = 0
+    while i < len(lines) - 2:
+        name = lines[i]
+        line1 = lines[i+1]
+        line2 = lines[i+2]
+        try:
+            sat = EarthSatellite(line1, line2, name, ts)
+            # TLE epoch (UTC date)
+            epoch = sat.epoch.utc_datetime().strftime("%Y-%m-%d")
+            sat.name = f"{name} ({epoch})"
+            sats.append(sat)
+        except Exception as e:
+            print(f"Error loading {name}: {e}")
+        i += 3
+    return sats
+
+# -----------------------------
+# Find passes above min elevation
+# -----------------------------
+def find_passes(sat, observer, min_elev, lookahead_days):
+    now = datetime.now(timezone.utc)
+    t0 = ts.from_datetime(now)
+    t1 = ts.from_datetime(now + timedelta(days=lookahead_days))
+
+    times, events = sat.find_events(observer, t0, t1, altitude_degrees=0.0)
+    passes = []
+    aos, los = None, None
+
+    for t, event in zip(times, events):
+        if event == 0:  # Rise
+            aos = t
+        elif event == 2 and aos is not None:  # Set
+            los = t
+            # compute max elevation between aos and los
+            sample_times = ts.linspace(aos, los, 50)
+            difference = sat.at(sample_times) - observer.at(sample_times)
+            altitudes = difference.altaz()[0].degrees
+            max_el = max(altitudes)
+            if max_el >= min_elev:
+                passes.append((aos, los, max_el, sat.name))
+            aos, los = None, None
+
+    return passes
+
+# -----------------------------
+# Main loop
+# -----------------------------
+try:
+    while True:
+        # reload TLEs each refresh
+        satellites = load_tles(tle_source)
+
+        # get TLE file last modified time
+        tle_mtime = None
+        if os.path.exists(tle_source):
+            tle_mtime = datetime.utcfromtimestamp(os.path.getmtime(tle_source)).replace(tzinfo=timezone.utc)
+
+        all_passes = []
+        for sat in satellites:
+            all_passes.extend(find_passes(sat, observer, min_elevation_deg, lookahead_days))
+
+        all_passes.sort(key=lambda p: p[0].utc_datetime())
+        all_passes = all_passes[:max_passes_to_show]
+
+        now = datetime.now(timezone.utc)
+
+        os.system("clear")
+        tle_info = f"TLE last updated: {tle_mtime.strftime('%Y-%m-%d %H:%M:%S UTC')}" if tle_mtime else "TLE file not found"
+        print(f"Observer: {observer_lat},{observer_lon} | Min Elevation: {min_elevation_deg}° | Lookahead: {lookahead_days} days")
+        print(f"Script refresh: {now.strftime('%Y-%m-%d %H:%M:%S UTC')} | {tle_info}\n")
+        print(f"{'Satellite':<36} {'Pass Window (UTC)':<30} {'Max El (°)':<10} {'Countdown':<12}")
+        print("-" * 100)
+
+        if not all_passes:
+            print("No passes above minimum elevation in the lookahead window.")
+        else:
+            for aos, los, max_el, name in all_passes:
+                aos_dt = aos.utc_datetime().replace(tzinfo=timezone.utc)
+                los_dt = los.utc_datetime().replace(tzinfo=timezone.utc)
+                # countdown only for valid passes (≥ min elevation)
+                countdown = aos_dt - now
+                countdown_str = str(countdown).split('.')[0] if countdown.total_seconds() > 0 else "In Progress"
+                window_str = f"{aos_dt.strftime('%Y-%m-%d %H:%M')}–{los_dt.strftime('%H:%M')}"
+                print(f"{name:<36} {window_str:<30} {max_el:>8.1f} {countdown_str:<12}")
+
+        time.sleep(refresh_interval)
+
+except KeyboardInterrupt:
+    print("\nExiting on user request.")
+
